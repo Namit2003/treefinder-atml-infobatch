@@ -25,3 +25,8 @@ PyYAML>=6.0
 matplotlib>=3.7.0
 tqdm>=4.65.0
 scipy>=1.10.0
+scikit-learn>=1.1.0
+seaborn>=0.12.0
+
+# InfoBatch: Lossless Training Speed Up by Unbiased Dynamic Data Pruning
+infobatch @ git+https://github.com/NUS-HPC-AI-Lab/InfoBatch

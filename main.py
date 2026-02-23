@@ -4,7 +4,7 @@ main.py: Training and evaluation pipeline for dead tree dataset.
 
 This script supports flexible train-test splits (random, geographic, state-based) and multiple model backbones (CNNs, ViTs, SegFormer, etc.).
 Usage:
-    python main.py --config configs.yaml --exp_name exp1
+    python main.py --config configs/debug.yaml --exp_name exp1
 
 Recommendation: use a YAML config (e.g., configs.yaml) to centralize parameters and ensure reproducibility, following common ML conventions.
 """
@@ -45,20 +45,25 @@ def main():
     # Set random seed for reproducibility
     set_seed(cfg['experiment']['seed'])
 
-    # Prepare data loaders
-    train_loader, val_loader, test_loader = get_dataloader(cfg)
+    # Prepare data loaders — get_dataloader returns (train_loader, val_loader, test_loader, train_dataset)
+    train_loader, val_loader, test_loader, train_dataset = get_dataloader(cfg)
     
     # Initialize model
     model = get_model(cfg['model'])
-    
-    # Train model
-    train_metrics = train_model(
-        model,
-        train_loader,
-        val_loader,
-        cfg,
-        exp_name
-    )
+
+    # Train or skip training
+    if args.eval_only:
+        logger.info("Evaluation only mode: Skipping training.")
+        train_metrics = {}
+    else:
+        train_metrics = train_model(
+            model,
+            train_loader,
+            val_loader,
+            train_dataset,
+            cfg,
+            exp_name
+        )
 
     # Evaluate model
     eval_metrics = evaluate_model(

@@ -23,10 +23,10 @@ data:
     pos_threshold: 0            # Threshold for positive class
     pos_frac: 0.           # Fraction of positive samples in the dataset
     random:
-      train_ratio: 0.2
+      train_ratio: 0.8
       train_val_ratio: 0.1            # Ratio of train to val in the training set
       test_ratio: 0.2
-      shuffle_by_tile: true  # Shuffle files before splitting
+      shuffle_by_tile: true           # Shuffle files before splitting
     by_state:
       # train_states: ['CO']
       train_states: ['AR', 'AZ', 'CA', 'CO', 'IA', 'ID', 'KS', 'LA', 'MN', 'MO', 'MT', 'ND', 'NE', 'NM', 'NV', 'OK', 'OR', 'SD', 'TX', 'UT', 'WA', 'WY']
@@ -48,7 +48,7 @@ data:
 
 # Model configuration
 model:
-  name: "mask2former"                 # [unet, deeplabv3, d3_tf, vitseg, segformer, mask2former, dofa]
+  name: "mask2former"                  # [unet, deeplabv3, d3_tf, vitseg, segformer, mask2former, dofa]
   in_channels: 5                     
   num_classes: 1
   image_size: 224
@@ -85,10 +85,10 @@ training:
   scheduler:
     type: "ExponentialLR"           # options: StepLR, ExponentialLR, CosineAnnealingWarmRestarts
   early_stopping:
-    enabled: true                   # Enable early stopping
+    enabled: false                   # Enable early stopping
     monitor: "val_loss"              # Metric to monitor for early stopping
     mode: "min"                      # Mode for monitoring (min or max)
-    patience: 5                     # Number of epochs with no improvement after which training will be stopped
+    patience: 5                      # Number of epochs with no improvement after which training will be stopped
 
 # Evaluation settings
 evaluation:
@@ -105,7 +105,13 @@ output:
   results_dir: "results/"               # Where to write final metrics (e.g. JSON, CSV)
   checkpoint_dir: "checkpoints/"        # Where to save model weights
 
+# InfoBatch configuration
+infobatch:
+  enabled: true
+  prune_ratio: 0.5                     # Fraction of easy samples to prune per epoch
+  delta: 0.875                         # Fraction of total epochs with active pruning
+
 # Logging configuration
 logging:
   log_dir: "logs/"                     # Directory for logging
-  log_interval: 100                     # Log training status every N batches
+  log_interval: 100                    # Log training status every N batches

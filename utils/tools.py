@@ -38,6 +38,10 @@ def parse_args():
         "--overwrite_cfg", type=bool, default=False,
         help="If True, overwrite the config with command-line arguments"
     )
+    parser.add_argument(
+        "--eval_only", action="store_true",
+        help="If set, skip training and only run evaluation"
+    )
     return parser.parse_args()
 
 

@@ -44,7 +44,7 @@ class FocalLoss(nn.Module):
     )
     
 
-def train_model(model, train_loader, val_loader, cfg, exp_name):
+def train_model(model, train_loader, val_loader, train_dataset, cfg, exp_name):
     """
     Train the model with validation and early stopping.
 
@@ -52,6 +52,7 @@ def train_model(model, train_loader, val_loader, cfg, exp_name):
       model: nn.Module
       train_loader: DataLoader for training
       val_loader: DataLoader for validation
+      train_dataset: raw or InfoBatch-wrapped training dataset
       cfg: full config dict
       exp_name: experiment identifier
 
@@ -64,6 +65,13 @@ def train_model(model, train_loader, val_loader, cfg, exp_name):
     device = torch.device(f"cuda:{gpu_id}" if torch.cuda.is_available() else "cpu")
     model.to(device)
     logger.info(f"Using device: {device}")
+
+    # Determine if InfoBatch is active
+    try:
+        from infobatch import InfoBatch
+        use_infobatch = isinstance(train_dataset, InfoBatch)
+    except ImportError:
+        use_infobatch = False
 
     # Unpack training cfg
     tr_cfg = cfg['training']
@@ -148,7 +156,11 @@ def train_model(model, train_loader, val_loader, cfg, exp_name):
 
     # CSV metrics file — written incrementally, one row per epoch
     csv_path = results_dir / f"{exp_name}_metrics.csv"
-    csv_fields = ['epoch', 'train_total_loss', 'val_total_loss', 'val_bce_loss', 'val_dice_loss', 'epoch_time_s']
+    csv_fields = [
+        'epoch', 'train_loss', 'val_loss', 'train_acc', 'val_acc',
+        'train_bce', 'train_dice', 'val_bce', 'val_dice',
+        'epoch_time_s', 'pruned_count'
+    ]
     csv_file = open(csv_path, 'w', newline='')
     csv_writer = csv.DictWriter(csv_file, fieldnames=csv_fields)
     csv_writer.writeheader()
@@ -160,16 +172,24 @@ def train_model(model, train_loader, val_loader, cfg, exp_name):
     # Training loop
     for epoch in range(1, num_epochs + 1):
         epoch_start = time.time()
+        total_steps = len(train_loader)
+        logger.info(f"Epoch {epoch} - Starting training with {total_steps} steps.")
         
         # Training
         model.train()
         train_loss_total = 0.0
         train_loss_bce   = 0.0
         train_loss_dice  = 0.0
-        # train_loss_focal = 0.0
+        train_correct    = 0
+        train_total_px   = 0
         step_times   = []
         for step, batch in enumerate(train_loader, 1):
             step_start = time.time()
+
+            # InfoBatch wraps each sample as (index, sample_dict); unpack when active
+            if use_infobatch:
+                _, batch = batch
+
             imgs = batch['image'].to(device)
             labels = batch['label'].unsqueeze(1).float().to(device)
             no_data = batch['no_data_mask'].unsqueeze(1).to(device)
@@ -179,7 +199,15 @@ def train_model(model, train_loader, val_loader, cfg, exp_name):
             outputs = model(imgs)
             
             raw_loss = criterion(outputs, labels) # (B,1,H,W)
-            bce_loss = (raw_loss * valid_mask).sum() / valid_mask.sum()
+
+            if use_infobatch:
+                # Reduce to per-image scalar [B] for InfoBatch scoring, then let update() reweight + mean
+                valid_pixels_per_img = valid_mask.view(valid_mask.shape[0], -1).sum(dim=1).clamp(min=1)
+                per_img_loss = (raw_loss * valid_mask).view(raw_loss.shape[0], -1).sum(dim=1) / valid_pixels_per_img
+                bce_loss = train_dataset.update(per_img_loss)
+            else:
+                bce_loss = (raw_loss * valid_mask).sum() / valid_mask.sum()
+
             if w_dice > 0:
                 dloss = dice_loss(outputs, labels, valid_mask)
             else: 
@@ -189,11 +217,18 @@ def train_model(model, train_loader, val_loader, cfg, exp_name):
             total_loss.backward()
             optimizer.step()
             
-            
             train_loss_total += total_loss.item()
             train_loss_bce += bce_loss.item()
             train_loss_dice += dloss.item()
             step_times.append(time.time() - step_start)
+
+            # Track training accuracy
+            with torch.no_grad():
+                preds = (torch.sigmoid(outputs) > 0.5).long()
+                gt = labels.long()
+                flat_valid = valid_mask.bool().view(-1)
+                train_correct += (preds.view(-1)[flat_valid] == gt.view(-1)[flat_valid]).sum().item()
+                train_total_px += flat_valid.sum().item()
             
             if step % log_interval == 0:
                 avg_total = train_loss_total / step
@@ -201,7 +236,7 @@ def train_model(model, train_loader, val_loader, cfg, exp_name):
                 avg_dice = train_loss_dice / step
                 log_str = (
                     f"[Epoch {epoch}/{num_epochs}] "
-                    f"Step {step}/{len(train_loader)} - "
+                    f"Step {step}/{total_steps} - "
                     f"Time Spent: {sum(step_times)/60:.1f}m - "
                     f"Train Total Loss: {avg_total:.4f}"
                 )
@@ -211,6 +246,9 @@ def train_model(model, train_loader, val_loader, cfg, exp_name):
                 step_times = []
 
         avg_train = train_loss_total / len(train_loader)
+        avg_train_bce = train_loss_bce / len(train_loader)
+        avg_train_dice = train_loss_dice / len(train_loader)
+        train_acc = train_correct / max(train_total_px, 1)
         train_losses.append(avg_train)
 
         # Validation
@@ -218,6 +256,8 @@ def train_model(model, train_loader, val_loader, cfg, exp_name):
         val_loss_total = 0.0
         val_loss_bce = 0.0
         val_loss_dice = 0.0
+        val_correct = 0
+        val_total_px = 0
         val_time = time.time()
         with torch.no_grad():
             for batch in val_loader:
@@ -239,20 +279,29 @@ def train_model(model, train_loader, val_loader, cfg, exp_name):
                 val_loss_total += total_loss.item()
                 val_loss_bce += bce_loss.item()
                 val_loss_dice += dloss.item()
+
+                # Track validation accuracy
+                preds = (torch.sigmoid(outputs) > 0.5).long()
+                gt = labels.long()
+                flat_valid = valid_mask.bool().view(-1)
+                val_correct += (preds.view(-1)[flat_valid] == gt.view(-1)[flat_valid]).sum().item()
+                val_total_px += flat_valid.sum().item()
                 
         avg_val = val_loss_total / len(val_loader)
-        avg_bce = val_loss_bce / len(val_loader)
-        avg_dice = val_loss_dice / len(val_loader)
+        avg_val_bce = val_loss_bce / len(val_loader)
+        avg_val_dice = val_loss_dice / len(val_loader)
+        val_acc = val_correct / max(val_total_px, 1)
         
         val_losses.append(avg_val)
         val_time = time.time() - val_time
         log_str = (
             f"[Epoch {epoch}/{num_epochs}] "
             f"Time Spent: {val_time/60:.1f}m - "
-            f"Avg Val Total Loss: {avg_val:.4f}"
+            f"Avg Val Total Loss: {avg_val:.4f} - "
+            f"Acc: {val_acc:.4f}"
             )
         if w_dice > 0:
-            log_str += f" - BCE Loss: {avg_bce:.4f} - Dice Loss: {avg_dice:.4f}"
+            log_str += f" - BCE Loss: {avg_val_bce:.4f} - Dice Loss: {avg_val_dice:.4f}"
         logger.info(log_str)
 
         # Save best weights and early stopping check
@@ -261,13 +310,13 @@ def train_model(model, train_loader, val_loader, cfg, exp_name):
             best_val = current
             best_path = ckpt_dir / f"{exp_name}_best.pth"
             torch.save(model.state_dict(), best_path)
-            logger.info(f"New best model ({monitor}={best_val:.4f}) saved: {best_path}")
+            logger.info(f"New best model (val_loss={best_val:.4f}) saved: {best_path}")
             best_metric = best_val
             epochs_no_improve = 0
         else:
             epochs_no_improve += 1
             if es_enabled:
-                logger.info(f"No improvement in {monitor} for {epochs_no_improve}/{patience} epochs.")
+                logger.info(f"No improvement in val_loss for {epochs_no_improve}/{patience} epochs.")
                 if epochs_no_improve >= patience:
                     logger.info(f"Early stopping at epoch {epoch}.")
                     break
@@ -280,16 +329,25 @@ def train_model(model, train_loader, val_loader, cfg, exp_name):
         # torch.save(model.state_dict(), ckpt_dir / f"epoch_{epoch}.pth") 
         
         epoch_time = time.time() - epoch_start
-        logger.info(f"Epoch {epoch} done in {epoch_time/60:.1f}m - Train: {avg_train:.4f}, Val: {avg_val:.4f}")
+        pruned_count = train_dataset.get_pruned_count() if use_infobatch else 0
+        log_str = f"Epoch {epoch} done in {epoch_time/60:.1f}m - Train: {avg_train:.4f}, Val: {avg_val:.4f}"
+        if use_infobatch:
+            log_str += f" - InfoBatch total pruned so far: {pruned_count}"
+        logger.info(log_str)
 
         # Write epoch row to CSV
         csv_writer.writerow({
             'epoch': epoch,
-            'train_total_loss': round(avg_train, 6),
-            'val_total_loss': round(avg_val, 6),
-            'val_bce_loss': round(avg_bce, 6),
-            'val_dice_loss': round(avg_dice, 6),
+            'train_loss': round(avg_train, 6),
+            'val_loss': round(avg_val, 6),
+            'train_acc': round(train_acc, 6),
+            'val_acc': round(val_acc, 6),
+            'train_bce': round(avg_train_bce, 6),
+            'train_dice': round(avg_train_dice, 6),
+            'val_bce': round(avg_val_bce, 6),
+            'val_dice': round(avg_val_dice, 6),
             'epoch_time_s': round(epoch_time, 2),
+            'pruned_count': pruned_count,
         })
         csv_file.flush()  # write to disk immediately so it's readable mid-training
 
@@ -321,4 +379,3 @@ def train_model(model, train_loader, val_loader, cfg, exp_name):
         logger.warning(f"Failed to plot loss curve: {e}")
 
     return {f"best_{monitor}": best_metric}
-
