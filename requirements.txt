@@ -1,0 +1,27 @@
+# GPU-enabled PyTorch (CUDA 12.4)
+# Just run: pip install -r requirements.txt
+# To check your CUDA version: nvcc --version  OR  nvidia-smi
+# If you are on CUDA 11.8, change cu124 -> cu118 in the URL below.
+--extra-index-url https://download.pytorch.org/whl/cu124
+
+# Core deep learning (PyTorch >=2.6 required by transformers due to CVE-2025-32434)
+# NOTE: PyTorch 2.6+ dropped CUDA 12.1 builds; cu124 is the closest modern option.
+torch==2.6.0+cu124
+torchvision==0.21.0+cu124
+
+# Hugging Face Transformers (SegFormer, ViT, Mask2Former)
+transformers>=4.40.0
+
+# Vision Transformer model library (used by DOFA backbone)
+timm>=1.0.3
+
+# Data handling
+numpy>=1.24.0,<2.0
+pandas>=2.0.0
+rasterio>=1.3.0
+
+# Utilities
+PyYAML>=6.0
+matplotlib>=3.7.0
+tqdm>=4.65.0
+scipy>=1.10.0

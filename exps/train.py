@@ -1,4 +1,5 @@
 import os
+import csv
 import time
 import logging
 from pathlib import Path
@@ -145,6 +146,17 @@ def train_model(model, train_loader, val_loader, cfg, exp_name):
     train_losses = []
     val_losses = []
 
+    # CSV metrics file — written incrementally, one row per epoch
+    csv_path = results_dir / f"{exp_name}_metrics.csv"
+    csv_fields = ['epoch', 'train_total_loss', 'val_total_loss', 'val_bce_loss', 'val_dice_loss', 'epoch_time_s']
+    csv_file = open(csv_path, 'w', newline='')
+    csv_writer = csv.DictWriter(csv_file, fieldnames=csv_fields)
+    csv_writer.writeheader()
+    logger.info(f"Metrics CSV will be saved to: {csv_path}")
+
+    # Total training time tracker
+    train_total_start = time.time()
+
     # Training loop
     for epoch in range(1, num_epochs + 1):
         epoch_start = time.time()
@@ -270,7 +282,27 @@ def train_model(model, train_loader, val_loader, cfg, exp_name):
         epoch_time = time.time() - epoch_start
         logger.info(f"Epoch {epoch} done in {epoch_time/60:.1f}m - Train: {avg_train:.4f}, Val: {avg_val:.4f}")
 
+        # Write epoch row to CSV
+        csv_writer.writerow({
+            'epoch': epoch,
+            'train_total_loss': round(avg_train, 6),
+            'val_total_loss': round(avg_val, 6),
+            'val_bce_loss': round(avg_bce, 6),
+            'val_dice_loss': round(avg_dice, 6),
+            'epoch_time_s': round(epoch_time, 2),
+        })
+        csv_file.flush()  # write to disk immediately so it's readable mid-training
+
         
+    # Close CSV and log total training time
+    csv_file.close()
+    total_train_time = time.time() - train_total_start
+    logger.info(
+        f"Total training time: {total_train_time/3600:.2f}h "
+        f"({total_train_time/60:.1f}m) over {epoch} epoch(s). "
+        f"Metrics CSV saved to: {csv_path}"
+    )
+
     # plot loss curve
     try:
         epochs = list(range(1, epoch + 1))
