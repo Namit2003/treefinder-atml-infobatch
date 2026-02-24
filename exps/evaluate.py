@@ -11,8 +11,8 @@ from sklearn.metrics import (
     roc_curve, auc,
     precision_recall_curve, average_precision_score,
     confusion_matrix,
-    calibration_curve,
 )
+from sklearn.calibration import calibration_curve
 import seaborn as sns
 
 
