@@ -25,9 +25,7 @@ from exps.train import train_model
 from exps.evaluate import evaluate_model
 
 
-def main():
-    st_time = time.time()
-    
+def main():    
     # Parse command-line args and load config
     args = parse_args()
     cfg = load_config(args.config)
@@ -55,7 +53,9 @@ def main():
     if args.eval_only:
         logger.info("Evaluation only mode: Skipping training.")
         train_metrics = {}
+        train_time = 0.0
     else:
+        t0 = time.time()
         train_metrics = train_model(
             model,
             train_loader,
@@ -64,20 +64,30 @@ def main():
             cfg,
             exp_name
         )
+        train_time = time.time() - t0
+        logger.info(f"Training completed in {train_time/3600:.2f}h ({train_time/60:.1f}m).")
 
     # Evaluate model
+    t0 = time.time()
     eval_metrics = evaluate_model(
         model,
         test_loader,
         cfg,
         exp_name
     )
+    eval_time = time.time() - t0
+    logger.info(f"Evaluation completed in {eval_time/3600:.2f}h ({eval_time/60:.1f}m).")
 
     # Combine and save metrics
     results_root = Path(cfg['output']['results_dir']) / exp_name
-    all_metrics = {**train_metrics, **eval_metrics}
+    all_metrics = {
+        **train_metrics,
+        **eval_metrics,
+        'train_time_h': train_time,
+        'eval_time_h': eval_time,
+    }
     save_results(all_metrics, exp_name, str(results_root))
-    logger.info(f"Spent {(time.time()-st_time)/3600:.1f}h: Experiment {exp_name} completed. Combined metrics: {all_metrics}")
+    logger.info(f"Experiment {exp_name} completed. Combined metrics: {all_metrics}")
 
 
 if __name__ == "__main__":
