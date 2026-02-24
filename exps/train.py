@@ -2,6 +2,7 @@ import os
 import csv
 import time
 import logging
+import itertools
 from pathlib import Path
 import torch
 import torch.nn as nn
@@ -172,8 +173,9 @@ def train_model(model, train_loader, val_loader, train_dataset, cfg, exp_name):
     # Training loop
     for epoch in range(1, num_epochs + 1):
         epoch_start = time.time()
-        total_steps = len(train_loader)
-        logger.info(f"Epoch {epoch} - Starting training with {total_steps} steps.")
+        batch_size = cfg['training'].get('batch_size', 32)
+        total_steps = (len(train_dataset) + batch_size - 1) // batch_size
+        logger.info(f"Epoch {epoch} - Starting training with ~{total_steps} steps.")
         
         # Training
         model.train()
@@ -183,12 +185,15 @@ def train_model(model, train_loader, val_loader, train_dataset, cfg, exp_name):
         train_correct    = 0
         train_total_px   = 0
         step_times   = []
-        for step, batch in enumerate(train_loader, 1):
+        # Cap at total_steps to prevent IBSampler from resetting mid-epoch
+        # (the InfoBatch monkey-patch can cause the sampler to restart, yielding
+        #  extra batches beyond one epoch's worth of data)
+        for step, batch in enumerate(itertools.islice(train_loader, total_steps), 1):
             step_start = time.time()
 
-            # InfoBatch wraps each sample as (index, sample_dict); unpack when active
-            if use_infobatch:
-                _, batch = batch
+            # InfoBatch monkey-patches DataLoader.__next__ to extract indices
+            # automatically via set_active_indices(), so the batch here is already
+            # the plain collated sample dict — no manual unpacking needed.
 
             imgs = batch['image'].to(device)
             labels = batch['label'].unsqueeze(1).float().to(device)
