@@ -2,12 +2,12 @@
 # Just run: pip install -r requirements.txt
 # To check your CUDA version: nvcc --version  OR  nvidia-smi
 # If you are on CUDA 11.8, change cu124 -> cu118 in the URL below.
---extra-index-url https://download.pytorch.org/whl/cu124
+--extra-index-url https://download.pytorch.org/whl/cu126
 
 # Core deep learning (PyTorch >=2.6 required by transformers due to CVE-2025-32434)
-# NOTE: PyTorch 2.6+ dropped CUDA 12.1 builds; cu124 is the closest modern option.
-torch==2.6.0+cu124
-torchvision==0.21.0+cu124
+# NOTE: cu126 is the most compatible build for CUDA 12.8 drivers (NVIDIA L40S).
+torch==2.10.0+cu126
+torchvision==0.25.0+cu126
 
 # Hugging Face Transformers (SegFormer, ViT, Mask2Former)
 transformers>=4.40.0
