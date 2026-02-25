@@ -55,9 +55,15 @@ def get_gdrive_service(credentials_path: str, token_path: str):
                     "Download it from Google Cloud Console → APIs & Services → Credentials.\n"
                     "Then run: python scripts/setup_gdrive.py"
                 )
-            flow = InstalledAppFlow.from_client_secrets_file(credentials_path, SCOPES)
-            # Use run_console for headless/SSH environments
-            creds = flow.run_console()
+            flow = InstalledAppFlow.from_client_secrets_file(
+                credentials_path, SCOPES,
+                redirect_uri="urn:ietf:wg:oauth:2.0:oob"
+            )
+            auth_url, _ = flow.authorization_url(prompt='consent')
+            print(f"\n[GDrive] Open this URL in your browser:\n\n  {auth_url}\n")
+            code = input("[GDrive] Paste the authorization code: ").strip()
+            flow.fetch_token(code=code)
+            creds = flow.credentials
 
         # Save refreshed token
         with open(token_path, 'w') as f:

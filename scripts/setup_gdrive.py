@@ -67,8 +67,20 @@ def main():
     print("the requested permissions, then copy-paste the code here.")
     print()
 
-    flow = InstalledAppFlow.from_client_secrets_file(CREDENTIALS_PATH, SCOPES)
-    creds = flow.run_console()
+    flow = InstalledAppFlow.from_client_secrets_file(
+        CREDENTIALS_PATH,
+        SCOPES,
+        redirect_uri="urn:ietf:wg:oauth:2.0:oob"  # out-of-band: no local server needed
+    )
+    auth_url, _ = flow.authorization_url(prompt='consent')
+
+    print("Open this URL in your browser (on your local machine):")
+    print()
+    print(f"  {auth_url}")
+    print()
+    code = input("Paste the authorization code here: ").strip()
+    flow.fetch_token(code=code)
+    creds = flow.credentials
 
     # Save token
     with open(TOKEN_PATH, 'w') as f:
