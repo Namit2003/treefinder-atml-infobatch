@@ -89,6 +89,17 @@ def main():
     save_results(all_metrics, exp_name, str(results_root))
     logger.info(f"Experiment {exp_name} completed. Combined metrics: {all_metrics}")
 
+    # Auto-upload outputs to Google Drive (if enabled in config)
+    gdrive_cfg = cfg.get('gdrive', {})
+    if gdrive_cfg.get('enabled', False):
+        try:
+            from utils.gdrive_upload import upload_experiment
+            upload_experiment(exp_name, cfg, gdrive_cfg)
+        except Exception as e:
+            logger.warning(f"[GDrive] Unexpected error during upload: {e}")
+    else:
+        logger.info("[GDrive] Upload skipped (gdrive.enabled is false or not configured).")
+
 
 if __name__ == "__main__":
     main()

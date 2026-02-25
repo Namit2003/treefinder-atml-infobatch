@@ -115,3 +115,10 @@ infobatch:
 logging:
   log_dir: "logs/"                     # Directory for logging
   log_interval: 100                    # Log training status every N batches
+
+# Google Drive auto-upload (uploads results/, checkpoints/, logs/ after experiment completes)
+gdrive:
+  enabled: true                          # Set to false to skip upload on any run
+  credentials_path: "credentials.json"   # Downloaded from Google Cloud Console (see scripts/setup_gdrive.py)
+  token_path: "token.json"               # Auto-generated after first auth — do not delete
+  drive_folder: "treefinder-atml-runs"   # Root folder name in your Google Drive
