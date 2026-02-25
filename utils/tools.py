@@ -42,6 +42,10 @@ def parse_args():
         "--eval_only", action="store_true",
         help="If set, skip training and only run evaluation"
     )
+    parser.add_argument(
+        "--train_fraction", type=float, default=None,
+        help="Fraction of training data to use (e.g. 0.1 = 10%%). Overrides data.train_fraction in the config when --overwrite_cfg is set."
+    )
     return parser.parse_args()
 
 
@@ -58,6 +62,8 @@ def overwrite_config(args, cfg):
     cfg['experiment']['gpu_id'] = args.gpu_id
     cfg['data']['split']['random']['train_ratio'] = args.train_ratio
     cfg['experiment']['seed'] = args.random_seed
+    if args.train_fraction is not None:
+        cfg['data']['train_fraction'] = args.train_fraction
     return cfg
 
 

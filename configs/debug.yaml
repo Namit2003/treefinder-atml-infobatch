@@ -14,6 +14,7 @@ data:
   dataset_info: "tile_info224_v3.csv"
   no_data_value: 255
   normalize: true
+  train_fraction: 1.0          # Fraction of training data to use (1.0 = 100%, 0.1 = 10%)
   augmentation:
     random_flip: true
     rotation:

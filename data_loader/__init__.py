@@ -1,3 +1,4 @@
+import numpy as np
 from torch.utils.data import DataLoader
 
 
@@ -18,6 +19,18 @@ def get_dataloader(cfg: dict):
     train_ds = DS(cfg, split="train")
     val_ds   = DS(cfg, split="val")
     test_ds  = DS(cfg, split="test")
+
+    # Optionally subsample the training set (val/test are always kept full)
+    train_fraction = cfg['data'].get('train_fraction', 1.0)
+    if 0.0 < train_fraction < 1.0:
+        import math
+        from torch.utils.data import Subset
+        n_total = len(train_ds)
+        n_keep = max(1, math.floor(n_total * train_fraction))
+        rng = np.random.RandomState(cfg['experiment']['seed'])
+        indices = rng.permutation(n_total)[:n_keep].tolist()
+        train_ds = Subset(train_ds, indices)
+        print(f"[TrainFraction] Using {n_keep}/{n_total} training samples ({train_fraction*100:.1f}%)")
 
     # Optionally wrap train dataset with InfoBatch
     ib_cfg = cfg.get('infobatch', {})
