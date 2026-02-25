@@ -53,7 +53,7 @@ def main():
             "  2. Select your project → APIs & Services → Credentials\n"
             "  3. Create OAuth 2.0 Client ID (Desktop app)\n"
             "  4. Download JSON and rename it to credentials.json\n"
-            "  5. Upload credentials.json to your remote server (project root)\n"
+            "  5. Place credentials.json in the project root\n"
             "  6. Re-run this script"
         )
         sys.exit(1)
@@ -62,25 +62,13 @@ def main():
     print("  Google Drive Authorization Setup")
     print("=" * 60)
     print()
-    print("A URL will appear below. Open it in any browser (on your")
-    print("local machine), sign in with your Google account, grant")
-    print("the requested permissions, then copy-paste the code here.")
+    print("A browser window will open. Sign in with your Google")
+    print("account and grant the requested permissions.")
     print()
 
-    flow = InstalledAppFlow.from_client_secrets_file(
-        CREDENTIALS_PATH,
-        SCOPES,
-        redirect_uri="urn:ietf:wg:oauth:2.0:oob"  # out-of-band: no local server needed
-    )
-    auth_url, _ = flow.authorization_url(prompt='consent')
-
-    print("Open this URL in your browser (on your local machine):")
-    print()
-    print(f"  {auth_url}")
-    print()
-    code = input("Paste the authorization code here: ").strip()
-    flow.fetch_token(code=code)
-    creds = flow.credentials
+    flow = InstalledAppFlow.from_client_secrets_file(CREDENTIALS_PATH, SCOPES)
+    # Opens a local browser tab and waits for the redirect
+    creds = flow.run_local_server(port=0, open_browser=True)
 
     # Save token
     with open(TOKEN_PATH, 'w') as f:
@@ -88,19 +76,30 @@ def main():
 
     print()
     print(f"✓ token.json saved successfully.")
+
+    # Test connection
     print()
     print("Testing connection to Google Drive...")
-
     try:
         service = build('drive', 'v3', credentials=creds)
         about = service.about().get(fields="user").execute()
         user = about.get('user', {})
         print(f"✓ Connected as: {user.get('displayName', 'Unknown')} ({user.get('emailAddress', '?')})")
-        print()
-        print("Setup complete! Your training runs will now auto-upload to Google Drive.")
     except Exception as e:
         print(f"WARNING: Connection test failed: {e}")
         print("token.json was saved — upload may still work during training.")
+
+    print()
+    print("=" * 60)
+    print("  NEXT STEP: Copy token.json to your remote server")
+    print("=" * 60)
+    print()
+    print("Run this command on your LOCAL machine:")
+    print()
+    print(f"  scp token.json <user>@<remote_server>:/path/to/treefinder-atml-infobatch/")
+    print()
+    print("After that, all training runs will auto-upload to Google Drive!")
+
 
 
 if __name__ == "__main__":
